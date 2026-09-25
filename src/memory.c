@@ -38,6 +38,7 @@ memory.c: RAM operations
 #include "fpga_spi.h"
 #include "led.h"
 #include "smc.h"
+#include "xc_audio.h"
 #include "memory.h"
 #include "snes.h"
 #include "timer.h"
@@ -551,10 +552,17 @@ void assert_reset() {
 void init(uint8_t *filename) {
   snescmd_prepare_nmihook();
   if (CFG.reset_patch) snescmd_writebyte(0, SNESCMD_RESET_HOOK+1);
-  cheat_yaml_load(filename);
+#ifdef CONFIG_MK3_STM32
+  /* Xeno Crisis: the image and the save are loaded now; the soft CPU starts with the SNES */
+  if(romprops.has_xc) xc_run(1);
+#endif
+  if(!romprops.has_xc) {
+    /* sd2snes_xc has no cheat engine or save states, and the image uses the cheat area of the PSRAM */
+    cheat_yaml_load(filename);
 // XXX    cheat_yaml_save(filename);
-  cheat_program();
-  savestate_program();
+    cheat_program();
+    savestate_program();
+  }
   fpga_set_features(romprops.fpga_features);
   fpga_reset_srtc_state();
   snes_set_mcu_cmd(0);

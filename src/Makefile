@@ -82,6 +82,14 @@ SRC += memory.c filetypes.c faulthandler.c sort.c crc32.c cic.c
 SRC += cli.c ymodem.c rle.c msu1.c crc16.c sysinfo.c
 SRC += cfg.c cheat.c yaml.c savestate.c sgb.c hwinfo.c
 
+# Xeno Crisis (sd2snes_xc core): Opus decode service, mk3 (STM32F401) only.
+# Build the decoder library first: xc_opus/build.sh <opus-1.3.1 source dir>
+ifeq ($(CONFIG_MK3_STM32),y)
+SRC += xc_audio.c
+XC_OPUS_DIR ?= xc_opus
+XC_OPUS_LIB = $(XC_OPUS_DIR)/libopus_xc.a
+endif
+
 SRC += usbdesc.c usbcore.c usbuser.c cdcuser.c usbinterface.c
 
 # List Assembler source files here.
@@ -114,6 +122,9 @@ DEBUG = dwarf-2
 #     Use forward slashes for directory separators.
 #     For a directory that has spaces, enclose it in quotes.
 EXTRAINCDIRS =
+ifeq ($(CONFIG_MK3_STM32),y)
+EXTRAINCDIRS += $(XC_OPUS_DIR)/include
+endif
 
 # Compiler flag to set the C Standard level.
 #     c89   = "ANSI" C
@@ -185,6 +196,9 @@ ASFLAGS = $(CPUFLAGS) -Wa,-adhlns=$(OBJDIR)/$(<:.S=.lst),-gstabs -I$(OBJDIR)
 LDFLAGS = -Wl,-Map=$(TARGET).map,--cref
 LDFLAGS += -T$(LINKERSCRIPT)
 LDFLAGS += -Wl,--gc-sections
+ifeq ($(CONFIG_MK3_STM32),y)
+LDFLAGS += $(XC_OPUS_LIB)
+endif
 ifeq ($(CONFIG_LINKER_RELAX),y)
   LDFLAGS += -Wl,-O9,--relax
 endif

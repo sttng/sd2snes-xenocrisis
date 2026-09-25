@@ -78,6 +78,7 @@ void smc_id(snes_romprops_t* props, uint32_t file_offset) {
   props->has_sa1 = 0;
   props->has_sdd1 = 0;
   props->has_combo = 0;
+  props->has_xc = 0;
   props->srambase = 0;
   props->sramsize_bytes = 0;
   props->fpga_features = 0;
@@ -198,6 +199,18 @@ void smc_id(snes_romprops_t* props, uint32_t file_offset) {
         props->error = MENU_ERR_NOIMPL;
         props->error_param = (uint8_t*)"ST0018";
       }
+      /* Xeno Crisis (Bitmap Bureau): the cartridge's RP2040 runs the game and streams it to the SNES.
+         The image is built by xc_build_image.py (kernel ROM + RP2040 flash); saves are the RP2040's
+         flash save area, which the sd2snes_xc core keeps at the start of the SRAM chip (32 KB .srm). */
+#ifdef CONFIG_MK3_STM32
+      else if (header->map == 0x30 && header->carttype == 0x63
+               && header->maker[0] == 'B' && header->maker[1] == 'M'
+               && !memcmp(header->gamecode, "XCRI", 4)) {
+        props->has_xc = 1;
+        props->fpga_conf = FPGA_XC;
+        header->ramsize = 5;
+      }
+#endif
       /* OBC1 LoROM */
       else if (header->map == 0x30 && header->carttype == 0x25) {
         props->has_obc1 = 1;
