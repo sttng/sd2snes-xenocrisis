@@ -87,7 +87,7 @@ SRC += cfg.c cheat.c yaml.c savestate.c sgb.c hwinfo.c
 # LPC1756 (firmware.im3): no Opus (the decoder needs ~26.5 KB of contiguous RAM plus ~11 KB of stack; the LPC1756
 # has 16 KB + 16 KB, mostly used): music packets are answered as "not decoded", sound effects play normally.
 ifeq ($(CONFIG_MK3),y)
-SRC += xc_audio.c
+SRC += xc_audio.c xc_load.c
 endif
 ifeq ($(CONFIG_MK3_STM32),y)
 XC_OPUS_DIR ?= xc_opus

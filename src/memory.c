@@ -336,6 +336,14 @@ uint32_t load_rom(uint8_t* filename, uint32_t base_addr, uint8_t flags) {
   }
   uart_putc('\n');
   file_close();
+#ifdef CONFIG_MK3
+  /* Xeno Crisis: the cartridge's 128 KB SNES ROM alone; add the RP2040 flash dump and the soft CPU files.
+     (A larger file is an image prebuilt by socfw/xc_build_image.py and is complete already.) */
+  if(romprops.has_xc && filesize == 0x20000) {
+    const char* missing = xc_load_image();
+    if(missing) snes_menu_errmsg(MENU_ERR_SUPPLFILE, (void*)missing);
+  }
+#endif
 
   printf("rom header map: %02x; mapper id: %d\n", romprops.header.map, romprops.mapper_id);
   ticks_total=getticks()-ticksstart;
@@ -443,6 +451,9 @@ uint32_t load_rom(uint8_t* filename, uint32_t base_addr, uint8_t flags) {
       // powerslide relies on the init value to be 00.
       sram_memset(SRAM_SAVE_ADDR, romprops.ramsize_bytes, romprops.has_gsu ? 0x00 : 0xFF);
       if (romprops.sramsize_bytes) migrate_and_load_srm(filename, SRAM_SAVE_ADDR);
+#ifdef CONFIG_MK3
+      if(romprops.has_xc && file_res == FR_NO_FILE) xc_load_dump_save();
+#endif
       /* file not found error is ok (SRM file might not exist yet) */
       if(file_res == FR_NO_FILE) file_res = 0;
       saveram_crc_old = calc_sram_crc(SRAM_SAVE_ADDR + romprops.srambase, romprops.sramsize_bytes, 0);
