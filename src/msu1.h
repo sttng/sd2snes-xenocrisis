@@ -39,6 +39,7 @@
 
 int msu1_check(uint8_t*);
 int msu1_loop(void);
+void msu1_audio_service(void);
 
 uint8_t msu_readbyte(uint16_t addr);
 uint16_t msu_readshort(uint16_t addr);

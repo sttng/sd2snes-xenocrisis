@@ -52,6 +52,7 @@ extern const uint8_t *fpga_config;
 #define FPGA_SPC7110 ((const uint8_t*)"/sd2snes/fpga_spc7110." FPGA_CONF_EXT)
 #define FPGA_BASE ((const uint8_t*)"/sd2snes/fpga_base." FPGA_CONF_EXT)
 #define FPGA_XC ((const uint8_t*)"/sd2snes/fpga_xc." FPGA_CONF_EXT)
+#define FPGA_XC_MSU ((const uint8_t*)"/sd2snes/fpga_xc_msu." FPGA_CONF_EXT)
 #define FPGA_DSP ((const uint8_t*)"/sd2snes/fpga_dsp." FPGA_CONF_EXT)
 #define FPGA_ROM ((const uint8_t*)"rom")
 

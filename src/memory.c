@@ -307,6 +307,10 @@ uint32_t load_rom(uint8_t* filename, uint32_t base_addr, uint8_t flags) {
     while(snes_get_mcu_cmd() != SNES_CMD_FPGA_RECONF);
     printf("OK.\n");
   }
+#ifdef CONFIG_MK3
+  /* Xeno Crisis with an MSU-1 pack (<rom>.msu + <rom>-<n>.pcm): the MSU-1 core, music from the pack */
+  if(romprops.has_xc) romprops.fpga_conf = xc_msu_pack(filename) ? FPGA_XC_MSU : FPGA_XC;
+#endif
   if(romprops.fpga_conf || (flags & LOADROM_WITH_FPGA)) {
     const uint8_t *fpga_conf = romprops.fpga_conf ? romprops.fpga_conf : FPGA_BASE;
     printf("reconfigure FPGA with %s...\n", fpga_conf);
@@ -471,6 +475,13 @@ uint32_t load_rom(uint8_t* filename, uint32_t base_addr, uint8_t flags) {
   } else {
     romprops.has_msu1 = 0;
   }
+#ifdef CONFIG_MK3
+  if(romprops.has_xc) {
+    /* the soft CPU drives the MSU-1, the SNES does not see it; without the MSU-1 core, no MSU-1 at all */
+    romprops.fpga_features &= ~FEAT_MSU1;
+    if(romprops.fpga_conf != FPGA_XC_MSU) romprops.has_msu1 = 0;
+  }
+#endif
   printf("done\n");
 
   printf("r213fen=%d is_u16=%d filename=%s\n", cfg_is_r213f_override_enabled(), STS.is_u16, filename);
