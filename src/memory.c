@@ -552,7 +552,7 @@ void assert_reset() {
 void init(uint8_t *filename) {
   snescmd_prepare_nmihook();
   if (CFG.reset_patch) snescmd_writebyte(0, SNESCMD_RESET_HOOK+1);
-#ifdef CONFIG_MK3_STM32
+#ifdef CONFIG_MK3
   /* Xeno Crisis: the image and the save are loaded now; the soft CPU starts with the SNES */
   if(romprops.has_xc) xc_run(1);
 #endif

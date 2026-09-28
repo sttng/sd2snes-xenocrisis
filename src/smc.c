@@ -201,8 +201,10 @@ void smc_id(snes_romprops_t* props, uint32_t file_offset) {
       }
       /* Xeno Crisis (Bitmap Bureau): the cartridge's RP2040 runs the game and streams it to the SNES.
          The image is built by xc_build_image.py (kernel ROM + RP2040 flash); saves are the RP2040's
-         flash save area, which the sd2snes_xc core keeps at the start of the SRAM chip (32 KB .srm). */
-#ifdef CONFIG_MK3_STM32
+         flash save area, which the sd2snes_xc core keeps at the start of the SRAM chip (32 KB .srm).
+         Both mk3 MCUs: the STM32F401 (firmware.stm) also decodes the music; the LPC1756 (firmware.im3) has too
+         little RAM for the Opus decoder, so there the game runs with sound effects but without music. */
+#ifdef CONFIG_MK3
       else if (header->map == 0x30 && header->carttype == 0x63
                && header->maker[0] == 'B' && header->maker[1] == 'M'
                && !memcmp(header->gamecode, "XCRI", 4)) {

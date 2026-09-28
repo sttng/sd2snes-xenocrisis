@@ -480,13 +480,13 @@ int main(void) {
     int loop_ticks = getticks();
     uint8_t usb_cmd = 0;
 // uint8_t snes_res;
-#ifdef CONFIG_MK3_STM32
+#ifdef CONFIG_MK3
     if(romprops.has_xc) xc_audio_init();
 #endif
     while(fpga_test() == FPGA_TEST_TOKEN) {
       cli_entrycheck();
-#ifdef CONFIG_MK3_STM32
-      if(romprops.has_xc) xc_audio_poll();   /* Xeno Crisis: Opus decode service for the soft CPU */
+#ifdef CONFIG_MK3
+      if(romprops.has_xc) xc_audio_poll();   /* Xeno Crisis: decode service for the soft CPU (Opus on STM32 only) */
 #endif
       //usb upload/boot/lock  
       usb_cmd |= usbint_handler();
