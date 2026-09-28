@@ -522,6 +522,10 @@ int main(void) {
         if(getticks() > loop_ticks + 25) {
           loop_ticks = getticks();
  //         sram_reliable();
+#ifdef CONFIG_MK3
+          /* debug print only; get_cic_state() samples the CIC pin 100,000 times (12 ms without the decode service) */
+          if(!romprops.has_xc)
+#endif
           printf("%s ", get_cic_statename(get_cic_state()));
           cmd=snes_main_loop();
           if (usb_cmd && !cmd) cmd = usb_cmd;
