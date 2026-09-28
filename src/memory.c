@@ -342,7 +342,7 @@ uint32_t load_rom(uint8_t* filename, uint32_t base_addr, uint8_t flags) {
   file_close();
 #ifdef CONFIG_MK3
   /* Xeno Crisis: the cartridge's 128 KB SNES ROM alone; add the RP2040 flash dump and the soft CPU files.
-     (A larger file is an image prebuilt by socfw/xc_build_image.py and is complete already.) */
+     (A larger file is an image prebuilt by src/xc_soc/xc_build_image.py and is complete already.) */
   if(romprops.has_xc && filesize == 0x20000) {
     const char* missing = xc_load_image();
     if(missing) snes_menu_errmsg(MENU_ERR_SUPPLFILE, (void*)missing);
