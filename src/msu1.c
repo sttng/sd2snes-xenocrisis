@@ -17,6 +17,9 @@
 #include "usbinterface.h"
 #include "savestate.h"
 #include "cfg.h"
+#ifdef CONFIG_MK3
+#include "xc_audio.h"
+#endif
 
 FIL msudata;
 FIL msuaudio;
@@ -237,6 +240,9 @@ static void __attribute__((noinline)) msu_audio_refill(uint16_t status) {
   if((status ^ dac_msb_prev) & MSU_FPGA_STATUS_DAC_READ_MSB) {
     dac_msb_prev = status & MSU_FPGA_STATUS_DAC_READ_MSB;
     set_dac_addr((status & MSU_FPGA_STATUS_DAC_READ_MSB) ? 0 : MSU_DAC_BUFSIZE / 2);
+#ifdef XC_MSU_DIAG
+    xc_msu_mcu[3]++;
+#endif
     sd_offload_tgt = 1;
     ff_sd_offload = 1;
     f_read(&msuaudio, file_buf, MSU_DAC_BUFSIZE / 2, &msu_audio_bytes_read);
@@ -338,6 +344,10 @@ int msu1_loop() {
   fpga_status_now = fpga_status();
   dac_msb_prev = fpga_status_now & MSU_FPGA_STATUS_DAC_READ_MSB;
   msu_loop_active = 1;
+#ifdef XC_MSU_DIAG
+  tick_t xc_log_next = getticks() + MS_TO_TICKS(3000);
+  memset(xc_msu_mcu, 0, sizeof(xc_msu_mcu));
+#endif
   while(msu_res == SNES_RESET_NONE){
     msu_res = get_snes_reset_state();
     cmd = snes_get_mcu_cmd();
@@ -406,6 +416,9 @@ int msu1_loop() {
     if(fpga_status_now & MSU_FPGA_STATUS_AUDIO_START) {
       /* get trackno */
       msu_track = get_msu_track();
+#ifdef XC_MSU_DIAG
+      xc_msu_mcu[0]++; xc_msu_mcu[1] = msu_track;
+#endif
       DBG_MSU1 printf("Audio requested! Track=%d\n", msu_track);
 
       prepare_audio_track(msu_track, (msu_track == resume_msu_track) ? resume_msu_offset : MSU_PCM_OFFSET_WAVEDATA);
@@ -421,6 +434,9 @@ int msu1_loop() {
     }
 
     if(fpga_status_now & MSU_FPGA_STATUS_CTRL_START) {
+#ifdef XC_MSU_DIAG
+      xc_msu_mcu[2]++;
+#endif
       if(fpga_status_now & MSU_FPGA_STATUS_CTRL_RESUME_FLAG_BIT && !(fpga_status_now & MSU_FPGA_STATUS_CTRL_PLAY_FLAG_BIT)) {
         resume_msu_track = msu_track;
         resume_msu_offset = f_tell(&msuaudio);
@@ -454,6 +470,13 @@ int msu1_loop() {
     /* handle loop / end */
     msu_audio_end();
 
+#ifdef XC_MSU_DIAG
+    /* Xeno Crisis: diagnostics to /sd2snes/xcaudio.txt, 3 s after the start and then every 10 s */
+    if(romprops.has_xc && getticks() > xc_log_next) {
+      xc_log_next = getticks() + MS_TO_TICKS(10000);
+      xc_msu_log("MSU-1");
+    }
+#endif
     /* check if we can sneak in an SRAM poll / save (Xeno Crisis: also while the music plays; the CRC and the
        save keep the audio buffer filled through xc_audio_service()) */
     if(is_msu_free_to_save() || romprops.has_xc) {
