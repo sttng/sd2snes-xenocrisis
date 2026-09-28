@@ -493,6 +493,11 @@ int main(void) {
       if (usb_cmd == SNES_CMD_GAMELOOP) usb_cmd = 0;
 
 //        sleep_ms(250);
+#ifdef CONFIG_MK3
+      /* Xeno Crisis: not every iteration. 256 PSRAM reads (~1-2 ms) would delay the decode service and take
+         bus slots from the soft CPU; snes_main_loop() still checks it every 250 ms before the save RAM CRC. */
+      if(!romprops.has_xc)
+#endif
       sram_reliable();
       
       // loop if we are in the middle of a reset
@@ -506,6 +511,9 @@ int main(void) {
       }
       uint8_t resetState = get_snes_reset_state();
       if(resetState == SNES_RESET_LONG) {
+#ifdef CONFIG_MK3
+        if(romprops.has_xc) xc_audio_report();
+#endif
         prepare_reset();
         break;
       } else {
@@ -533,6 +541,9 @@ int main(void) {
                 break;
               case SNES_CMD_RESET_TO_MENU:
                 usb_cmd = 0;
+#ifdef CONFIG_MK3
+                if(romprops.has_xc) xc_audio_report();
+#endif
                 prepare_reset();
                 goto snes_loop_out;
               case SNES_CMD_SAVESTATE:
