@@ -17,9 +17,7 @@
 #include "usbinterface.h"
 #include "savestate.h"
 #include "cfg.h"
-#ifdef CONFIG_MK3
 #include "xc_audio.h"
-#endif
 
 FIL msudata;
 FIL msuaudio;
@@ -273,7 +271,7 @@ static void __attribute__((noinline)) msu_audio_end(void) {
   }
 }
 
-#ifdef CONFIG_MK3
+#ifdef XC_SUPPORT
 /* Xeno Crisis MSU-1 core: keeps the music going during long MCU jobs (SRAM CRC, save), called from
    xc_audio_service() between their sectors; the caller has deselected the FPGA */
 void msu1_audio_service(void) {

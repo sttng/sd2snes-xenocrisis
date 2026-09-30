@@ -480,12 +480,12 @@ int main(void) {
     int loop_ticks = getticks();
     uint8_t usb_cmd = 0;
 // uint8_t snes_res;
-#ifdef CONFIG_MK3
+#ifdef XC_SUPPORT
     if(romprops.has_xc) xc_audio_init();
 #endif
     while(fpga_test() == FPGA_TEST_TOKEN) {
       cli_entrycheck();
-#ifdef CONFIG_MK3
+#ifdef XC_SUPPORT
       if(romprops.has_xc) xc_audio_poll();   /* Xeno Crisis: decode service for the soft CPU (Opus on STM32 only) */
 #endif
       //usb upload/boot/lock  
@@ -493,7 +493,7 @@ int main(void) {
       if (usb_cmd == SNES_CMD_GAMELOOP) usb_cmd = 0;
 
 //        sleep_ms(250);
-#ifdef CONFIG_MK3
+#ifdef XC_SUPPORT
       /* Xeno Crisis: not every iteration. 256 PSRAM reads (~1-2 ms) would delay the decode service and take
          bus slots from the soft CPU; snes_main_loop() still checks it every 250 ms before the save RAM CRC. */
       if(!romprops.has_xc)
@@ -511,7 +511,7 @@ int main(void) {
       }
       uint8_t resetState = get_snes_reset_state();
       if(resetState == SNES_RESET_LONG) {
-#ifdef CONFIG_MK3
+#ifdef XC_SUPPORT
         if(romprops.has_xc) xc_audio_report();
 #endif
         prepare_reset();
@@ -522,7 +522,7 @@ int main(void) {
         if(getticks() > loop_ticks + 25) {
           loop_ticks = getticks();
  //         sram_reliable();
-#ifdef CONFIG_MK3
+#ifdef XC_SUPPORT
           /* debug print only; get_cic_state() samples the CIC pin 100,000 times (12 ms without the decode service) */
           if(!romprops.has_xc)
 #endif
@@ -545,7 +545,7 @@ int main(void) {
                 break;
               case SNES_CMD_RESET_TO_MENU:
                 usb_cmd = 0;
-#ifdef CONFIG_MK3
+#ifdef XC_SUPPORT
                 if(romprops.has_xc) xc_audio_report();
 #endif
                 prepare_reset();
