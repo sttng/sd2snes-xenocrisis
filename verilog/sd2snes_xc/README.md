@@ -1,24 +1,38 @@
-# Xeno Crisis on sd2snes: the `sd2snes_xc` core (step 4)
+# Xeno Crisis on sd2snes mk3: the `sd2snes_xc` core
 
-This step turns the pieces from the earlier steps into a complete sd2snes mk3 (FXPAK Pro) implementation. The pieces were the soft CPU, the `$3000` window, the audio split and the no-native-code firmware.
+Xeno Crisis on the sd2snes mk3 (FXPAK Pro): a soft Cortex-M0 CPU in the FPGA runs the cartridge's RP2040
+firmware. This page describes the Opus core, `fpga_xc.bi3`, and the parts shared with the MSU-1 core,
+[`../sd2snes_xc_msu`](../sd2snes_xc_msu/README.md) (`fpga_xc_msu.bi3`). The sd2snes mk2 port (Spartan-3, MSU-1
+only, 20 MHz soft CPU) is on the `xenocrisis-mk2` branch, in `verilog/sd2snes_xc_mk2`.
 
 The implementation has four parts:
 - an FPGA core, `verilog/sd2snes_xc`, derived from `sd2snes_gsu`;
 - the MCU firmware changes;
-- an image builder that makes the single file the sd2snes loads;
+- the game image in the PSRAM, which the firmware builds at load time (`src/xc_load.c`; at first an offline image
+  builder, `src/xc_soc/xc_build_image.py`, which remains for debugging and for MesenCE);
 - an RTL-in-the-loop test, in which MesenCE runs the whole game on the Verilated FPGA design.
 
-Status: everything is simulated and checked except what needs Quartus or hardware. That means the fit, timing closure at 40 MHz, and the first run on a real FXPAK Pro.
+**Status:** the game runs on the FXPAK Pro at full speed, with music and sound effects.
+- **Quartus:** fits and meets timing (soft CPU `clk[1]` 40.25 MHz, slack +0.69 ns; `clk[0]` +1.19 ns); 91% of the
+  logic elements, 49 of 56 M9K blocks.
+- **On hardware** (30 s of play, MCU log): no game tick longer than one SNES frame (longest 14.2 ms).
+- **Music:** with the STM32F401 firmware (`firmware.stm`) the MCU decodes the game's Opus streams; with the MSU-1
+  core, which the firmware chooses when an MSU-1 pack is next to the ROM, it comes from the pack. The LPC1756
+  firmware (`firmware.im3`) has no Opus decoder: it plays the sound effects only; with an MSU-1 pack the MSU-1
+  core should give it the music too (not tried on hardware yet).
+- **Still to check on hardware:** see "Open points" at the end.
+
+How it came about is kept below, step by step, with the measurements at each step.
 
 ## Overview
 
 ```
-                      sd2snes FPGA (CLK2, 85.9 MHz)                          | clk_soc (40 MHz)
+                      sd2snes FPGA (CLK2, 85.9 MHz)                          | clk_soc (40.25 MHz)
  SNES bus --> address.v --> $3000 window: xc_window                           |
               (LoROM kernel)     descriptor queue -> DMA -> 512 B ring --> SNES|
                                  RX FIFO <-- SNES writes                       |
  PSRAM  <-- ROM FSM (main.v) <-- xc_bridge executor <== toggle handshake ===> xc_soc
- SRAM   <-- RAM FSM (main.v) <-- SRAM arbiter (DMA first, per byte)           |   xc_m0 + I$ 4 KB + D$ 8 KB
+ SRAM   <-- RAM FSM (main.v) <-- SRAM arbiter (DMA first, per byte)           |   xc_m0 + I$ 16 KB + D$ 16 KB
  MCU    <-> mcu_cmd.v ($C0-$C6) <-> xc_decbox (Opus mailbox) <== bridge ===>   |   timer, SIO, NVIC, BRR, tick
 ```
 
@@ -29,7 +43,8 @@ Status: everything is simulated and checked except what needs Quartus or hardwar
 - **The crossing.** Everything crosses through `xc_bridge`. It carries one operation at a time: a cache line, a register access or a single uncached access. The request and completion are toggles through two-flop synchronizers, and the data sits in two small dual-clock RAMs. The SoC clock can therefore be changed freely. Set the PLL's `clk1` to 161/*d* and `SOC_CLK_NUM/SOC_CLK_DEN` to 1288/*d* MHz, reduced (for example *d* = 40: 32.2 MHz, 161/5). Also set the `clk[1]` line in `main.sdc`.
 - **Memory buses.** The ROM bus (PSRAM) and RAM bus (SRAM chip) requests use the ports and state machines of the GSU core.
   - The PSRAM is shared with the SNES through the existing free-slot scheme: one access per SNES cycle, when the SNES isn't reading ROM.
-  - The SNES never touches the SRAM chip in this core, so the SRAM bus is all ours: 7 cycles (≈80 ns) per byte.
+  - The SNES never touches the SRAM chip in this core, so the SRAM bus is all ours. Line fills and write-backs run
+    as bursts of up to 32 bytes, 8 CLK2 cycles per byte (see "SRAM bursts" below).
 
 ## Memory
 
@@ -43,7 +58,8 @@ Status: everything is simulated and checked except what needs Quartus or hardwar
 | `0xD20000-0xD23FFF` | replacement bootrom (`xc_bootrom.bin`) | soft CPU, address 0 |
 | `0xD24000-0xD27FFF` | RP2040 flash `0xF00000-0xF03FFF` (firmware additions) | soft CPU |
 
-- `src/xc_soc/xc_build_image.py` builds this 13.8 MB file from the kernel dump and the RP2040 flash dump. It applies the SoC patches as `xc_patch_image.py` does.
+- The firmware builds this layout in the PSRAM when the game is loaded (`src/xc_load.c`, see "MCU").
+  `src/xc_soc/xc_build_image.py` builds the same 13.8 MB as a file, for debugging and for MesenCE.
 - The layout keeps clear of the PSRAM areas the MCU uses while a game runs: 0xE00000 and up (menu, save states, SPC dumps).
 - The cheat area at 0xD00000 is used. The MCU skips cheats and save states for this cartridge; the core has no cheat engine anyway.
 
@@ -100,12 +116,12 @@ The SoC is held in reset while the SNES is in reset (`SNES_DEADr`, like the cart
 
 - **Both mk3 MCUs.** The FPGA core, the game image and everything below except Opus are the same for both.
   - **STM32F401 (`firmware.stm`):** full support, including the music decoder.
-  - **LPC1756 (`firmware.im3`):** no music.
+  - **LPC1756 (`firmware.im3`):** no Opus music; music only from an MSU-1 pack with the MSU-1 core.
     - The Opus decoder needs about 26.5 KB of contiguous RAM plus about 11 KB of stack. Its CELT half alone is about 17 KB, larger than either of the LPC1756's two 16 KB RAM banks. The stock firmware already leaves only about 5 KB and 7 KB free.
     - Its decode service therefore answers every music packet at once as "nothing decoded" (ret 0, final range 0). The mixer treats the track as ended (the RP2040 firmware's path for corrupted music data) and keeps mixing the sound effects.
     - Checked in MesenCE (`XC_NODEC=1`, 3,600 frames): all 120 screenshots are identical to the normal run, with no faults and the same stream. The audio is exactly the sound-effect part of the normal soundtrack: correlation 0.141 at zero lag, which equals √(energy ratio 0.020).
     - `firmware.im3`: 144,648 bytes; main RAM use is the stock 10,868 bytes + 16.
-- **Detection** (`smc.c`, `CONFIG_MK3`): map `$30`, chipset `$63`, maker `BM`, game `XCRI`. It sets `FPGA_XC` (`/sd2snes/fpga_xc.bi3`) and 32 KB of save RAM.
+- **Detection** (`smc.c`, `CONFIG_MK3`): map `$30`, chipset `$63`, maker `BM`, game `XCRI`. It sets `FPGA_XC` (`/sd2snes/fpga_xc.bi3`), or `FPGA_XC_MSU` (`/sd2snes/fpga_xc_msu.bi3`) when an MSU-1 pack (`<rom>.msu`) is next to the ROM and that core is on the card (`xc_msu_pack()`), and 32 KB of save RAM.
 - **Loading** (`memory.c`, `xc_load.c`):
   - the 128 KB SNES ROM loads as a normal ROM; then `xc_load_image()` adds the RP2040 flash dump (`/sd2snes/xenocrisis_rp2040.bin`, two SD DMA transfers: flash `0x020000-0xCFFFFF` to PSRAM `0x020000`, flash `0x000000-0x01FFFF` to `0xD00000`) and `/sd2snes/xc_soc.bin` (bootrom to `0xD20000`, firmware additions to `0xD24000`), and applies the additions' patch table (17 redirects) in the PSRAM. Checked on the host against `xc_build_image.py`: the PSRAM image (`0x000000-0xD27FFF`) and the seeded save area are byte-identical;
   - a larger file is a prebuilt image (`xc_build_image.py`) and loads as is;
@@ -116,8 +132,12 @@ The SoC is held in reset while the SNES is in reset (`SNES_DEADr`, like the cart
 - **First hardware statistics** (163 s of play, 8,136 packets): decode 7.0 ms on average (the model said 7.1), max 25 ms (the CELT → hybrid switch at a track start runs a CELT PLC frame with a pitch search: 24–27 ms in the model too). The service time per packet has a second cluster at 20–26 ms (6%): packets that waited behind a 12 ms MCU pause every 250 ms. A second log (after the change below) placed it: the main loop's debug print of the CIC state, whose `get_cic_state()` samples the CIC pin 100,000 times. It is skipped with Xeno Crisis now. The other pause, 3 ms every 250 ms, was `sram_reliable()` in `snes_main_loop()`: 1,024 PSRAM reads that each wait for a ROM-bus slot behind the soft CPU and take slots from its flash fetches meanwhile; with Xeno Crisis it now does 4 reads instead of 256 (1 ms in the second log). The second log also shows no poll gap over 20 ms and a 21 ms log write. The log also reports how long its own previous write took.
 - **Long MCU jobs serve the decoder in between** (`memory.c`): the save RAM CRC (32 KB every 250 ms, about 20 ms) calls `xc_audio_service()` every 512 bytes, and `save_sram()` after every 512-byte sector written to the SD card.
 - **Timing statistics** (`xc_audio.c`, DWT cycle counter): per packet the service time (including the poll gap before it) and the decode time, the poll gaps, and how often the mixer was already waiting for the next packet. Printed on the UART and written to **`/sd2snes/xcaudio.txt`** every 1,500 packets (30 s of music) and when the game is left (long reset or reset to menu). The first version wrote it only when the game was left, so switching the console off lost it. The periodic write is skipped inside the CRC or a save and done at the next main-loop job; FatFs errors go to the UART.
-- **Opus library:** `xc_opus/build.sh <opus-1.3.1 source>` builds `libopus_xc.a`. The settings are exact (see the script). **Built with the sd2snes MCU flags and run on a Cortex-M4 instruction-level model, it decodes all 480,000 samples bit-exact** (checksum `0xdb88f8e0`, the same as the host decoder that matches the firmware).
-- **Size, with the real mini bitstream** (`fpga_mini.bi3`, 56,939 bytes, embedded by the build):
+- **Opus library:** `make` builds `libopus_xc.a` from the vendored Opus 1.3.1 source (`src/xc_opus/opus-1.3.1`,
+  with `xc_opus/build.sh` and its patches) before the firmware. The settings are exact (see the script). **Built with the sd2snes MCU flags and run on a Cortex-M4 instruction-level model, it decodes all 480,000 samples bit-exact** (checksum `0xdb88f8e0`, the same as the host decoder that matches the firmware).
+- **Size, with the real mini bitstream** (`fpga_mini.bi3`, 56,939 bytes, embedded by the build). The numbers in
+  this list are from the time of the stutter changes; since then the Opus build leaves out the SILK downsampler
+  and the CELT encoder calls (`xc_nodownsample.patch`, `xc_decoder_only.patch`, decoded output bit-identical),
+  about 3 KB less, and `firmware.stm` is **209,920 bytes** (about 3 KB free).
   - **`firmware.stm` is 212,788 bytes (with the stutter changes: hot Opus files at `-O2`, statistics): a 212,276-byte image plus the 512-byte header, against 212,480 + 512.** That leaves 204 bytes free (4,692 before the stutter changes, 1,352 before `xc_load.c`). RAM: 13.4 KB left for the stack (Opus needs about 11 KB).
   - Two changes were needed to fit:
     - **`stm32f401.ld`:** the `.ahbram` buffers (8 KB sort buffer, MSU-1) became `NOLOAD`. On the STM32 nothing initializes them from flash, but their 8,992 zero bytes were stored in the image. The RAM layout is unchanged. Stock 1.11.2 shrinks by the same 8,992 bytes (153,936 → 144,944).
@@ -188,9 +208,11 @@ All runs: 0 reference mismatches, 0 DMA mismatches. With the normal bus latencie
 ## Building and using it
 
 1. **FPGA:** `verilog/sd2snes_xc` is a Quartus project (`sd2snes_xc.qpf`, EP4CE15F17C8) like the other mk3 cores. `make` in that folder produces `fpga_xc.bi3`; copy it to `/sd2snes/` on the SD card.
-2. **MCU:** build the Opus library (`src/xc_opus/build.sh <opus-1.3.1>`), then the firmware as usual (`make CONFIG=config-mk3-stm32`).
+2. **MCU:** build the firmware as usual (`make CONFIG=config-mk3-stm32`, `make CONFIG=config-mk3`); the STM32 build
+   makes the Opus library first, from the vendored source. The top-level `make` builds everything and puts the cores,
+   the firmware and `xc_soc.bin` in the release.
    The MSU-1 core, `fpga_xc_msu.bi3`, is built the same way in `verilog/sd2snes_xc_msu`; copy it next to `fpga_xc.bi3`.
-3. **Soft CPU files:** `xc_soc.bin` (replacement bootrom + firmware additions, 33,280 bytes) is built with the mk3 firmware from `src/xc_soc/` and ends up next to `firmware.stm`/`firmware.im3` (`src/obj-mk3*/`, and in the release). Copy it to `/sd2snes/` together with the firmware: the two belong together, and an older `xc_soc.bin` with a newer firmware or core can fail silently (for example no sound with the MSU-1 core). MesenCE builds its copy from the same sources (`src/xc_soc/build.sh <sd2snes>/src/xc_soc`). Like the bitstream, it belongs to the firmware release, not to the game.
+3. **Soft CPU files:** `xc_soc.bin` (replacement bootrom + firmware additions, 33,280 bytes) is built with the mk3 firmware from `src/xc_soc/` and ends up next to `firmware.stm`/`firmware.im3` (`src/obj-mk3*/`, and in the release). Copy it to `/sd2snes/` together with the firmware: the two belong together, and an older `xc_soc.bin` with a newer firmware or core can fail silently (for example no sound with the MSU-1 core). MesenCE builds its copy from the same sources (`Core/SNES/Coprocessors/XenoCrisis/socfw/build.sh <sd2snes>/src/xc_soc` in the MesenCE tree). Like the bitstream, it belongs to the firmware release, not to the game.
 4. **The game:** put the RP2040 flash dump in `/sd2snes/xenocrisis_rp2040.bin` (16 MB, supplied by the user like the DSP or BS-X files) and load the cartridge's SNES ROM from the menu like any other game (`XENOCRISIS`, 128 KB, CRC32 `FE5B38F0`). The firmware builds the image in the PSRAM (`src/xc_load.c`). Without a `.srm` the save area starts from the dump's, so the cartridge's saves carry over; from then on the saves go to the `.srm` as usual.
    - A missing or wrong `xenocrisis_rp2040.bin` or `xc_soc.bin` is reported by the menu as a missing supplemental file (as for DSP firmware). The dump is checked for size (16 MB) and firmware build (`multicore_launch_core1` at `0x10059060`); `xc_soc.bin` for its header.
    - `xc_build_image.py` still works: a file larger than 128 KB is taken as a prebuilt image and loaded as is.
@@ -223,9 +245,10 @@ Leaving these out saves about 2,600 LEs and 20 M9K blocks. The first can be swit
 
 The "reads found the ring empty" statistic was 68 in 60 s. Each one is a SNES read that came within about 250 ns of a post, before the first byte arrived. The kernel is polling at those moments, as it does on the cartridge, where the RP2040's DMA also takes time.
 
-## Size (estimate)
+## Size (estimate before the first Quartus build)
 
-Quartus isn't available here. Yosys (`synth_intel`, Cyclone IV E) numbers for `xc_top`, statistics off:
+Quartus result, for comparison: 91% of the logic elements and 49 of 56 M9K blocks (with the 16 KB caches and the
+SRAM bursts, which came later). The estimate was made without Quartus. Yosys (`synth_intel`, Cyclone IV E) numbers for `xc_top`, statistics off:
 
 | Block | LUTs | Flip-flops | RAM blocks |
 |---|---|---|---|
@@ -243,9 +266,12 @@ Quartus isn't available here. Yosys (`synth_intel`, Cyclone IV E) numbers for `x
 - **Base:** the sd2snes base without MSU/DAC/cheats is about 1,400 LUTs.
 - **Total:** about **12,500 of 15,408 LEs (≈81%)**, **34 of 56 M9K**, 5 of 56 multipliers.
 
-This should fit. Timing is covered in the next section.
+It did fit.
 
-## Timing (estimate, and the changes it led to)
+## Timing (estimate before the first Quartus build, and the changes it led to)
+
+Quartus result, for comparison: `clk[1]` (40.25 MHz) closes with +0.69 ns, `clk[0]` with +1.19 ns (see "On hardware
+with the SRAM bursts" above). The changes listed here are all in the design.
 
 Quartus isn't available here, so timing was estimated with a small static-timing script (`fpga/timing/sta.py`) on the Yosys netlist:
 - **Netlist:** the design is mapped to 4-input LUTs, with adders, multipliers and block RAMs kept as whole cells.
@@ -277,16 +303,13 @@ A second path of the same length went from the adder, through the next bus addre
 
 **Area:** 244 fewer LUTs and 62 more flip-flops (same Yosys flow, before vs after).
 
-What's left on `clk_soc` is the register read → adder → next bus address → cache key path. On `clk2` it is the `TX_PENDING` sum. **40.25 MHz (24.84 ns, the PLL's actual clock) should now close with about 15–25% margin.** Quartus has the last word. If it doesn't close, the fallback is 32.2 MHz: PLL `clk1` 161/40, `SOC_CLK_NUM/DEN` 161/5, and `main.sdc` `clk[1]` 161/40.
+What's left on `clk_soc` is the register read → adder → next bus address → cache key path. On `clk2` it is the `TX_PENDING` sum. The estimate said 40.25 MHz would close with 15–25% margin; Quartus gave much less (Fmax 41.0–41.4 MHz), and it took the PC + 4 register and the fitter settings above to keep it closed. A lower clock is described under "Timing after the SRAM bursts".
 
-## Not done yet
+## Open points
 
-1. **Quartus fit and timing.**
-   - The estimate above says both domains close, `clk_soc` with 15–25% margin. Check `clk_soc` (`clk[1]`, 40.25 MHz) and `clk2` (`clk[0]`, 85.87 MHz) in the Quartus timing report.
-   - Fallback: 32.2 MHz (see "Timing").
-   - The first Quartus run failed on the PLL (an exact 40 MHz next to 85.87 MHz can't be made; error 15094). The fix: `clk1` = 161/32, and `clk0` requested as the exact 161/15 it already ran at.
-2. **First hardware run** (done: the game boots and plays; there was no audio until the SPI fix above, so audio on hardware is still to be confirmed).
-   - Check that `SNES_DEADr` behaves as the SoC reset expects during the MCU's reset sequence.
-   - Watch the UART for the halt report.
-   - Check the saves: the `.srm` appears after the first save.
-3. **MCU on hardware.** The flash budget is settled with the real mini bitstream (4,692 bytes free, see "MCU"). Measure the decoder's real time on the STM32F401 (modelled: 39% of 84 MHz before flash wait states). On the LPC1756 (`firmware.im3`), check the game with sound effects only.
+Done: Quartus fit and timing, the first hardware runs, audio on hardware (Opus and MSU-1), the decoder's real time on
+the STM32F401 (`xcaudio.txt`, see "First hardware statistics"). Still to check on hardware:
+1. **Saves:** the `.srm` appears after the first save, and a cartridge save carries over from the dump.
+2. **LPC1756 firmware** (`firmware.im3`): the game with sound effects only, and with the MSU-1 core.
+3. **Reset:** `SNES_DEADr` during the MCU's reset sequence holds the SoC in reset as expected (reset to menu,
+   long reset); watch the UART for the halt report.
