@@ -34,6 +34,7 @@
 #include "fpga.h"
 #include "cfg.h"
 #include "memory.h"
+#include "xc_audio.h"   /* XC_SUPPORT */
 
 extern cfg_t CFG;
 snes_romprops_t romprops;
@@ -204,13 +205,18 @@ void smc_id(snes_romprops_t* props, uint32_t file_offset) {
          /sd2snes/xc_soc.bin (xc_load.c); an image prebuilt by xc_build_image.py loads as is. Saves are the RP2040's
          flash save area, which the sd2snes_xc core keeps at the start of the SRAM chip (32 KB .srm).
          Both mk3 MCUs: the STM32F401 (firmware.stm) also decodes the music; the LPC1756 (firmware.im3) has too
-         little RAM for the Opus decoder, so there the game runs with sound effects but without music. */
-#ifdef CONFIG_MK3
+         little RAM for the Opus decoder, so there the game runs with sound effects but without music.
+         mk2: fpga_xc_mk2.bit, MSU-1 only (memory.c chooses the core when the game is loaded). */
+#ifdef XC_SUPPORT
       else if (header->map == 0x30 && header->carttype == 0x63
                && header->maker[0] == 'B' && header->maker[1] == 'M'
                && !memcmp(header->gamecode, "XCRI", 4)) {
         props->has_xc = 1;
+#ifdef CONFIG_MK2
+        props->fpga_conf = FPGA_XC_MK2;
+#else
         props->fpga_conf = FPGA_XC;
+#endif
         header->ramsize = 5;
       }
 #endif
