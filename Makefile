@@ -24,7 +24,7 @@ MK3EXT := bi3
 # Xeno Crisis: xc and xc_msu (mk3), xc_mk2 (mk2, MSU-1 only). The other cores are left out to keep the build short;
 # move them in front of the # to build them too.
 MK2CORES := #base xc_mk2 #cx4 gsu obc1 sdd1 sa1 dsp sgb sgb_msu
-MK3CORES := base xc #xc_msu #gsu spc7110 #cx4 obc1 sdd1 sa1 dsp sgb
+MK3CORES := base xc_mk3 #xc_msu #gsu spc7110 #cx4 obc1 sdd1 sa1 dsp sgb
 
 MK2FPGA := $(foreach C,$(MK2CORES),$(FPGAPATH)/sd2snes_$C/fpga_$C.$(MK2EXT))
 MK3FPGA := $(foreach C,$(MK3CORES),$(FPGAPATH)/sd2snes_$C/fpga_$C.$(MK3EXT))
