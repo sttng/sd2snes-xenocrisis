@@ -90,7 +90,7 @@ typedef struct __attribute__ ((__packed__)) {
   uint8_t has_sdd1;           /* S-DD1 presence flag */
   uint8_t has_spc7110;        /* SPC7110 presence flag */
   uint8_t has_combo;          /* Multi game presence flag */
-  uint8_t has_xc;             /* Xeno Crisis (RP2040 coprocessor, sd2snes_xc core) */
+  uint8_t has_xc;             /* Xeno Crisis (RP2040 coprocessor, sd2snes_xc_mk3 / sd2snes_xc_mk2 cores) */
   uint32_t srambase;          /* saveram base address */
   uint32_t sramsize_bytes;    /* saveram size in bytes */
   uint16_t fpga_features;     /* feature/peripheral enable bits */

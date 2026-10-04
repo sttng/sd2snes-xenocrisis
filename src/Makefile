@@ -82,7 +82,7 @@ SRC += memory.c filetypes.c faulthandler.c sort.c crc32.c cic.c
 SRC += cli.c ymodem.c rle.c msu1.c crc16.c sysinfo.c
 SRC += cfg.c cheat.c yaml.c savestate.c sgb.c hwinfo.c
 
-# Xeno Crisis (sd2snes_xc core): decode service for the soft CPU, both mk3 MCUs.
+# Xeno Crisis (sd2snes_xc_mk3 core): decode service for the soft CPU, both mk3 MCUs.
 # STM32F401 (firmware.stm): with the Opus decoder, built automatically from the Opus 1.3.1 source in
 # xc_opus/opus-1.3.1 (xc_opus/build.sh; needs bash and patch)
 # LPC1756 (firmware.im3): no Opus (the decoder needs ~26.5 KB of contiguous RAM plus ~11 KB of stack; the LPC1756

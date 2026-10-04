@@ -312,8 +312,8 @@ uint32_t load_rom(uint8_t* filename, uint32_t base_addr, uint8_t flags) {
   /* Xeno Crisis on the mk2: one core, MSU-1 only (without a pack: no music) */
   if(romprops.has_xc) romprops.fpga_conf = FPGA_XC_MK2;
 #else
-  /* Xeno Crisis: the combined core if it is on the card, else with an MSU-1 pack (<rom>.msu + <rom>-<n>.pcm)
-     the MSU-1 core, else the Opus core (xc_select_core()) */
+  /* Xeno Crisis on mk3: fpga_xc_mk3, music from an MSU-1 pack (<rom>.msu + <rom>-<n>.pcm) if there is one, else
+     from the game's Opus streams (xc_select_core()) */
   if(romprops.has_xc) romprops.fpga_conf = xc_select_core(filename);
 #endif
 #endif
@@ -487,7 +487,7 @@ uint32_t load_rom(uint8_t* filename, uint32_t base_addr, uint8_t flags) {
   }
 #ifdef XC_SUPPORT
   if(romprops.has_xc) {
-    /* the soft CPU drives the MSU-1, the SNES does not see it; without the MSU-1 core, no MSU-1 at all */
+    /* the soft CPU drives the MSU-1, the SNES does not see it; MSU-1 only with a pack (mk3) */
     romprops.fpga_features &= ~FEAT_MSU1;
 #ifndef CONFIG_MK2
     if(!xc_msu_music()) romprops.has_msu1 = 0;
@@ -591,7 +591,7 @@ void init(uint8_t *filename) {
   if(romprops.has_xc) xc_run(xc_msu_music() ? 3 : 1);
 #endif
   if(!romprops.has_xc) {
-    /* sd2snes_xc has no cheat engine or save states, and the image uses the cheat area of the PSRAM */
+    /* the Xeno Crisis cores have no cheat engine or save states, and the image uses the cheat area of the PSRAM */
     cheat_yaml_load(filename);
 // XXX    cheat_yaml_save(filename);
     cheat_program();
