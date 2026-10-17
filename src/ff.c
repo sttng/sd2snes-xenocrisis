@@ -2540,7 +2540,22 @@ FRESULT f_open (
 /* Read File                                                             */
 /*-----------------------------------------------------------------------*/
 
+static FRESULT f_read_body (FIL* fp, void* buff, UINT btr, UINT* br);
+
 FRESULT f_read (
+	FIL* fp, 		/* Pointer to the file object */
+	void* buff,		/* Pointer to data buffer */
+	UINT btr,		/* Number of bytes to read */
+	UINT* br		/* Pointer to number of bytes read */
+)
+{
+	FRESULT res = f_read_body(fp, buff, btr, br);
+	ff_sd_offload = 0;
+	sd_offload = 0;
+	return res;
+}
+
+static FRESULT f_read_body (
 	FIL* fp, 		/* Pointer to the file object */
 	void* buff,		/* Pointer to data buffer */
 	UINT btr,		/* Number of bytes to read */
@@ -3006,7 +3021,19 @@ FRESULT f_getcwd (
 /* Seek File R/W Pointer                                                 */
 /*-----------------------------------------------------------------------*/
 
+static FRESULT f_lseek_body (FIL* fp, DWORD ofs);
+
 FRESULT f_lseek (
+	FIL* fp,		/* Pointer to the file object */
+	DWORD ofs		/* File pointer from top of file */
+)
+{
+	FRESULT res = f_lseek_body(fp, ofs);
+	ff_sd_offload = 0;
+	return res;
+}
+
+static FRESULT f_lseek_body (
 	FIL* fp,		/* Pointer to the file object */
 	DWORD ofs		/* File pointer from top of file */
 )
